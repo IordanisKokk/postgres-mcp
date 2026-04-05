@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { DbClient } from "../db/client.js";
-import { listTablesQuery } from "../db/introspection.js";
+import { listTablesQuery } from "../db/queries/listTablesQuery.js";
 import type { ListTablesInput, ListTablesOutput } from "../types/index.js";
 
 export const listTablesInputSchema = z

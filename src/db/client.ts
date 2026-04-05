@@ -12,7 +12,7 @@ export class DbClient {
       application_name: "postgres-mcp-server"
     });
   }
-
+  
   async query<T extends QueryResultRow>(
     sql: string,
     params: unknown[] = []

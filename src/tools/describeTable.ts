@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { DbClient } from "../db/client.js";
-import { describeTableQuery } from "../db/introspection.js";
+import { describeTableQuery } from "../db/queries/describeTableQuery.js";
 import type { DescribeTableInput, DescribeTableOutput } from "../types/index.js";
 
 export const describeTableInputSchema = z
