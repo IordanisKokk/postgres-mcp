@@ -796,6 +796,198 @@ FROM support_tickets AS t
 WHERE t.status IN ('resolved', 'closed')
   AND t.resolved_at IS NOT NULL;
 
+INSERT INTO analytics.daily_sales_summary (
+  summary_date,
+  orders_count,
+  gross_revenue,
+  refunds_total,
+  new_customers
+)
+SELECT
+  day.day::DATE AS summary_date,
+  COUNT(o.id)::INT AS orders_count,
+  COALESCE(round(SUM(o.total), 2), 0)::NUMERIC(12, 2) AS gross_revenue,
+  COALESCE(round(SUM(CASE WHEN o.status = 'refunded' THEN o.total ELSE 0 END), 2), 0)::NUMERIC(12, 2) AS refunds_total,
+  (
+    SELECT COUNT(*)::INT
+    FROM customers AS c
+    WHERE c.created_at::DATE = day.day::DATE
+  ) AS new_customers
+FROM generate_series(CURRENT_DATE - INTERVAL '29 days', CURRENT_DATE, INTERVAL '1 day') AS day(day)
+LEFT JOIN orders AS o
+  ON o.placed_at::DATE = day.day::DATE
+GROUP BY day.day
+ORDER BY day.day;
+
+WITH ranked_products AS (
+  SELECT
+    oi.product_id,
+    SUM(oi.quantity)::INT AS units_sold,
+    round(SUM(oi.line_total), 2)::NUMERIC(12, 2) AS gross_revenue,
+    round(AVG(r.rating), 2)::NUMERIC(3, 2) AS average_rating,
+    ROW_NUMBER() OVER (
+      ORDER BY SUM(oi.line_total) DESC, oi.product_id
+    ) AS revenue_rank
+  FROM order_items AS oi
+  LEFT JOIN reviews AS r
+    ON r.order_item_id = oi.id
+  GROUP BY oi.product_id
+),
+snapshot_dates AS (
+  SELECT CURRENT_DATE - 1 AS snapshot_date
+  UNION ALL
+  SELECT CURRENT_DATE - 7 AS snapshot_date
+)
+INSERT INTO analytics.product_performance_snapshot (
+  snapshot_date,
+  product_id,
+  units_sold,
+  gross_revenue,
+  average_rating
+)
+SELECT
+  sd.snapshot_date,
+  rp.product_id,
+  rp.units_sold,
+  rp.gross_revenue,
+  rp.average_rating
+FROM snapshot_dates AS sd
+JOIN ranked_products AS rp
+  ON rp.revenue_rank <= 25
+ORDER BY sd.snapshot_date, rp.revenue_rank;
+
+INSERT INTO operations.integration_endpoints (
+  system_name,
+  base_url,
+  owner_team,
+  status,
+  last_checked_at
+)
+VALUES
+  ('stripe', 'https://api.stripe.example.internal', 'payments', 'active', NOW() - INTERVAL '8 minutes'),
+  ('shippo', 'https://shippo.example.internal', 'fulfillment', 'active', NOW() - INTERVAL '11 minutes'),
+  ('zendesk', 'https://zendesk.example.internal', 'support', 'degraded', NOW() - INTERVAL '21 minutes'),
+  ('netsuite', 'https://netsuite.example.internal', 'finance', 'paused', NOW() - INTERVAL '2 hours');
+
+WITH seed AS (
+  SELECT
+    ARRAY['nightly-etl', 'inventory-sync', 'fraud-check', 'refund-reconciliation', 'warehouse-rollup'] AS job_names,
+    ARRAY['scheduler', 'support-console', 'ops-dashboard', 'backfill-script'] AS triggers
+)
+INSERT INTO operations.job_runs (
+  job_name,
+  environment,
+  status,
+  started_at,
+  finished_at,
+  triggered_by,
+  details
+)
+SELECT
+  pick_text(seed.job_names),
+  CASE
+    WHEN random() < 0.18 THEN 'staging'
+    ELSE 'production'
+  END,
+  run_status.status,
+  run_times.started_at,
+  CASE
+    WHEN run_status.status IN ('queued', 'running') THEN NULL
+    ELSE run_times.started_at + make_interval(minutes => (5 + FLOOR(random() * 90))::INT)
+  END,
+  pick_text(seed.triggers),
+  jsonb_build_object(
+    'attempt', (1 + FLOOR(random() * 3))::INT,
+    'region', pick_text(ARRAY['us-east-1', 'us-west-2', 'eu-west-1']),
+    'batch_size', (50 + FLOOR(random() * 950))::INT
+  )
+FROM generate_series(1, 80) AS g
+CROSS JOIN seed
+CROSS JOIN LATERAL (
+  SELECT NOW() - make_interval(days => (FLOOR(random() * 20))::INT, hours => (FLOOR(random() * 24))::INT) AS started_at
+) AS run_times
+CROSS JOIN LATERAL (
+  SELECT CASE
+    WHEN random() < 0.10 THEN 'queued'
+    WHEN random() < 0.24 THEN 'running'
+    WHEN random() < 0.90 THEN 'succeeded'
+    ELSE 'failed'
+  END AS status
+) AS run_status;
+
+WITH customer_order_stats AS (
+  SELECT
+    c.id AS customer_id,
+    COUNT(o.id)::INT AS orders_count,
+    MAX(o.placed_at) AS last_order_at,
+    COALESCE(SUM(o.total), 0)::NUMERIC(12, 2) AS lifetime_value
+  FROM customers AS c
+  LEFT JOIN orders AS o
+    ON o.customer_id = c.id
+  GROUP BY c.id
+),
+seed AS (
+  SELECT ARRAY['Avery Cole', 'Jordan Lee', 'Mina Patel', 'Theo Brooks', 'Sam Rivera'] AS owners
+)
+INSERT INTO crm.account_segments (
+  customer_id,
+  lifecycle_stage,
+  segment_label,
+  health_score,
+  owner_name
+)
+SELECT
+  stats.customer_id,
+  CASE
+    WHEN stats.orders_count = 0 THEN 'new'
+    WHEN stats.last_order_at IS NULL OR stats.last_order_at < NOW() - INTERVAL '240 days' THEN 'churned'
+    WHEN stats.last_order_at < NOW() - INTERVAL '120 days' THEN 'at_risk'
+    WHEN stats.orders_count >= 6 THEN 'retained'
+    ELSE 'growth'
+  END AS lifecycle_stage,
+  CASE
+    WHEN stats.orders_count = 0 THEN 'never-purchased'
+    WHEN stats.lifetime_value >= 2500 THEN 'vip-repeat'
+    WHEN stats.last_order_at < NOW() - INTERVAL '120 days' THEN 'win-back'
+    WHEN stats.orders_count >= 3 THEN 'steady-repeat'
+    ELSE 'early-repeat'
+  END AS segment_label,
+  GREATEST(
+    5,
+    LEAST(
+      100,
+      25
+        + LEAST(stats.orders_count * 7, 35)
+        + LEAST(FLOOR(stats.lifetime_value / 150)::INT, 25)
+        - CASE
+            WHEN stats.last_order_at IS NULL THEN 10
+            WHEN stats.last_order_at < NOW() - INTERVAL '240 days' THEN 40
+            WHEN stats.last_order_at < NOW() - INTERVAL '120 days' THEN 20
+            ELSE 0
+          END
+    )
+  )::INT AS health_score,
+  CASE
+    WHEN random() < 0.22 THEN NULL
+    ELSE pick_text(seed.owners)
+  END AS owner_name
+FROM customer_order_stats AS stats
+CROSS JOIN seed;
+
+INSERT INTO crm.outreach_campaigns (
+  campaign_name,
+  channel,
+  status,
+  target_segment,
+  launched_at
+)
+VALUES
+  ('Spring Winback Push', 'email', 'completed', 'win-back', NOW() - INTERVAL '21 days'),
+  ('VIP Concierge Touchpoint', 'support', 'running', 'vip-repeat', NOW() - INTERVAL '3 days'),
+  ('New Customer Education Drip', 'email', 'running', 'never-purchased', NOW() - INTERVAL '5 days'),
+  ('SMS Checkout Recovery', 'sms', 'scheduled', 'early-repeat', NULL),
+  ('Dormant Customer Check-In', 'email', 'draft', 'at-risk', NULL);
+
 DROP FUNCTION pick_text(TEXT[]);
 
 ANALYZE;

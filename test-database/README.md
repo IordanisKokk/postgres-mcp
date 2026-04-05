@@ -35,6 +35,13 @@ The DB initializes from:
 
 It creates ~20 related tables with realistic commerce/support data (customers, addresses, products, inventory, orders, order_items, payments, shipments, reviews, support tickets, etc.).
 
+It also seeds a few extra non-system schemas for introspection demos:
+
+- `public`: core commerce/support tables
+- `analytics`: reporting snapshots
+- `operations`: job run and integration monitoring tables
+- `crm`: customer segmentation and outreach tables
+
 ## Quick MCP checks with curl
 
 Initialize:
@@ -64,13 +71,22 @@ curl -si -X POST 'http://localhost:3001/mcp' \
   --data '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"list_tables","arguments":{"schema":"public","include_views":false}}}'
 ```
 
+Call `list_schemas`:
+
+```bash
+curl -si -X POST 'http://localhost:3001/mcp' \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  --data '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"list_schemas","arguments":{}}}'
+```
+
 Call `describe_table`:
 
 ```bash
 curl -si -X POST 'http://localhost:3001/mcp' \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
-  --data '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"describe_table","arguments":{"schema":"public","table":"orders"}}}'
+  --data '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"describe_table","arguments":{"schema":"analytics","table":"daily_sales_summary"}}}'
 ```
 
 ## Reset (re-seed from scratch)

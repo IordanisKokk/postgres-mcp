@@ -248,3 +248,75 @@ CREATE INDEX idx_shipment_events_shipment_id ON shipment_events(shipment_id);
 CREATE INDEX idx_reviews_product_id ON reviews(product_id);
 CREATE INDEX idx_support_tickets_customer_id ON support_tickets(customer_id);
 CREATE INDEX idx_support_ticket_messages_ticket_id ON support_ticket_messages(ticket_id);
+
+CREATE SCHEMA analytics;
+CREATE SCHEMA operations;
+CREATE SCHEMA crm;
+
+CREATE TABLE analytics.daily_sales_summary (
+  summary_date DATE PRIMARY KEY,
+  orders_count INTEGER NOT NULL CHECK (orders_count >= 0),
+  gross_revenue NUMERIC(12, 2) NOT NULL CHECK (gross_revenue >= 0),
+  refunds_total NUMERIC(12, 2) NOT NULL CHECK (refunds_total >= 0),
+  new_customers INTEGER NOT NULL CHECK (new_customers >= 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE analytics.product_performance_snapshot (
+  snapshot_date DATE NOT NULL,
+  product_id BIGINT NOT NULL REFERENCES public.products(id),
+  units_sold INTEGER NOT NULL CHECK (units_sold >= 0),
+  gross_revenue NUMERIC(12, 2) NOT NULL CHECK (gross_revenue >= 0),
+  average_rating NUMERIC(3, 2),
+  PRIMARY KEY (snapshot_date, product_id)
+);
+
+CREATE TABLE operations.integration_endpoints (
+  id BIGSERIAL PRIMARY KEY,
+  system_name TEXT NOT NULL UNIQUE,
+  base_url TEXT NOT NULL,
+  owner_team TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('active', 'degraded', 'paused')),
+  last_checked_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE operations.job_runs (
+  id BIGSERIAL PRIMARY KEY,
+  job_name TEXT NOT NULL,
+  environment TEXT NOT NULL CHECK (environment IN ('staging', 'production')),
+  status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'succeeded', 'failed')),
+  started_at TIMESTAMPTZ NOT NULL,
+  finished_at TIMESTAMPTZ,
+  triggered_by TEXT NOT NULL,
+  details JSONB NOT NULL DEFAULT '{}'::jsonb,
+  CHECK (finished_at IS NULL OR finished_at >= started_at)
+);
+
+CREATE TABLE crm.account_segments (
+  customer_id BIGINT PRIMARY KEY REFERENCES public.customers(id) ON DELETE CASCADE,
+  lifecycle_stage TEXT NOT NULL CHECK (lifecycle_stage IN ('new', 'growth', 'retained', 'at_risk', 'churned')),
+  segment_label TEXT NOT NULL,
+  health_score INTEGER NOT NULL CHECK (health_score BETWEEN 0 AND 100),
+  owner_name TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE crm.outreach_campaigns (
+  id BIGSERIAL PRIMARY KEY,
+  campaign_name TEXT NOT NULL UNIQUE,
+  channel TEXT NOT NULL CHECK (channel IN ('email', 'sms', 'support')),
+  status TEXT NOT NULL CHECK (status IN ('draft', 'scheduled', 'running', 'completed')),
+  target_segment TEXT NOT NULL,
+  launched_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_analytics_product_performance_product_id
+  ON analytics.product_performance_snapshot(product_id);
+CREATE INDEX idx_operations_job_runs_job_name
+  ON operations.job_runs(job_name);
+CREATE INDEX idx_operations_job_runs_status
+  ON operations.job_runs(status);
+CREATE INDEX idx_crm_account_segments_lifecycle_stage
+  ON crm.account_segments(lifecycle_stage);

@@ -33,7 +33,7 @@ services:
       MCP_PATH: /mcp
       QUERY_TIMEOUT_MS: 15000
       MAX_ROWS: 500
-      ALLOWED_SCHEMAS: public
+      ALLOWED_SCHEMAS: public,analytics,operations,crm
     ports:
       - "${MCP_PORT:-3001}:3000"
     restart: unless-stopped
