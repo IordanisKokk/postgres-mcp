@@ -13,8 +13,8 @@ export async function listSchemasQuery(
     let sql = `
         SELECT schema_name AS name
         FROM information_schema.schemata
-        WHERE schema_name NOT IN ('pg_catalog',
-        'information_schema')
+        WHERE schema_name <> 'information_schema'
+        AND schema_name NOT LIKE 'pg\_%' ESCAPE '\'
     `;
 
     if (env.ALLOWED_SCHEMAS.length > 0) {

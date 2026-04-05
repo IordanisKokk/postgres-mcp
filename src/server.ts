@@ -6,6 +6,7 @@ import {
 import { db } from "./db/client.js";
 import { normalizeError } from "./utils/errors.js";
 import { describeTableInputSchema, runDescribeTable } from "./tools/describeTable.js";
+import { listSchemasInputSchema, runListSchemas } from "./tools/listSchemas.js";
 import { listTablesInputSchema, runListTables } from "./tools/listTables.js";
 import { testConnectionInputSchema, runTestConnection } from "./tools/testConnection.js";
 
@@ -35,6 +36,15 @@ const tools = [
           description: "When true, include views in results."
         }
       }
+    }
+  },
+  {
+    name: "list_schemas",
+    description: "List non-system schemas visible to the server, respecting ALLOWED_SCHEMAS.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {}
     }
   },
   {
@@ -110,6 +120,12 @@ export function createMcpServer(): Server {
       if (name === "list_tables") {
         const input = listTablesInputSchema.parse(args ?? {});
         const result = await runListTables(db, input);
+        return makeToolResponse(result);
+      }
+
+      if (name === "list_schemas") {
+        const input = listSchemasInputSchema.parse(args ?? {});
+        const result = await runListSchemas(db, input);
         return makeToolResponse(result);
       }
 

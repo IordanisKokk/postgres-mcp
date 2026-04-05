@@ -22,6 +22,14 @@ export interface ListTablesOutput {
   }>;
 }
 
+export interface ListSchemasInput { }
+
+export interface ListSchemasOutput {
+  schemas: Array<{
+    name: string;
+  }>
+}
+
 export interface DescribeTableInput {
   table: string;
   schema?: string;
