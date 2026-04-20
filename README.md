@@ -7,6 +7,11 @@ Self-hosted PostgreSQL MCP server in TypeScript with a streamable HTTP endpoint 
 - `test_connection`
 - `list_tables`
 - `describe_table`
+- `list_schemas`
+
+## Roadmap
+
+See [ROADMAP.md](/Users/iordaniskokk/CSD/postgres-mcp-server/ROADMAP.md) for the planned tool and platform roadmap.
 
 ## Project structure
 
