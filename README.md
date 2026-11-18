@@ -1,6 +1,24 @@
 # postgres-mcp-server
 
-Self-hosted PostgreSQL MCP server in TypeScript with a streamable HTTP endpoint and read-only database introspection tools.
+Inspect PostgreSQL schemas, tables, columns, and keys from an MCP client. This self-hosted TypeScript server exposes four read-only tools over Streamable HTTP.
+
+## Try the seeded database
+
+From the repository root, start the demo with Docker Compose:
+
+```bash
+docker compose -f test-database/docker-compose.yml up -d --build
+```
+
+Connect your MCP client to `http://localhost:3001/mcp` and ask: **“Describe the daily sales summary table in the analytics schema. Which column is its primary key?”**
+
+The client can call `describe_table` with `{"schema":"analytics","table":"daily_sales_summary"}`. In the [seed schema](./test-database/init/001_schema.sql), `summary_date` is the primary key and `gross_revenue` is a numeric column with precision 12 and scale 2.
+
+The demo publishes the MCP server on port **3001** by default. The standalone server uses **3000**. See the [demo guide](./test-database/README.md) for curl examples. To stop the demo and keep its data:
+
+```bash
+docker compose -f test-database/docker-compose.yml down
+```
 
 ## Current scope
 
@@ -11,7 +29,7 @@ Self-hosted PostgreSQL MCP server in TypeScript with a streamable HTTP endpoint 
 
 ## Roadmap
 
-See [ROADMAP.md](/Users/iordaniskokk/CSD/postgres-mcp-server/ROADMAP.md) for the planned tool and platform roadmap.
+See [ROADMAP.md](./ROADMAP.md) for the planned tool and platform roadmap.
 
 ## Project structure
 
@@ -101,17 +119,6 @@ Default endpoints:
 docker-compose up --build
 ```
 
-## Test database stack
-
-For repeatable local checks, use the seeded stack in [`test-database/README.md`](/Users/iordaniskokk/CSD/postgres-mcp-server/test-database/README.md).
-
-That stack runs:
-
-- a seeded PostgreSQL instance
-- this MCP server in the same Docker network
-
-It is the easiest way to manually verify the current tools end-to-end.
-
 ## Add to Codex MCP config
 
 Use streamable HTTP MCP transport pointing to:
@@ -153,6 +160,14 @@ Output shape:
   "server_version": "PostgreSQL 16...",
   "server_time": "2026-03-20T12:00:00.000Z"
 }
+```
+
+### `list_schemas`
+
+Call with `{}` to list visible non-system schemas in alphabetical order, filtered by `ALLOWED_SCHEMAS` when configured. Example output for a server restricted to the public schema:
+
+```json
+{ "schemas": [{ "name": "public" }] }
 ```
 
 ### `list_tables`
@@ -241,7 +256,3 @@ Current application-level error codes:
 - optional schema restriction via `ALLOWED_SCHEMAS`
 - system schemas are excluded from introspection paths
 - DB statement/query timeout is configured through env
-
-## Status
-
-The DB/query architecture refactor has been split into smaller modules and `src/db/introspection.ts` has been removed. The next major work items are MCP server/runtime cleanup, regression checks, and additional read-only tools.
